@@ -15,6 +15,7 @@ PACKAGES=(
 	fakeroot
 	libssl-dev
 	libelf-dev
+	libdw-dev     # provides dwarf.h, required by scripts/gendwarfksyms
 	libncurses-dev
 	libudev-dev
 	libpci-dev
