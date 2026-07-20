@@ -45,13 +45,13 @@ fi
 REPO="https://kernel.ubuntu.com/git/ubuntu/ubuntu-${CODENAME}.git"
 
 echo "[1/3] Looking up tag for version $VERSION on $REPO ..."
-TAG="$(git ls-remote --tags "$REPO" "Ubuntu-${VERSION}*" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -1)"
+TAG="$(git ls-remote --tags "$REPO" "Ubuntu-${VERSION}*" | awk '{print $2}' | sed -e 's#refs/tags/##' -e 's/\^{}$//' | sort -uV | tail -1)"
 
 if [[ -z "$TAG" ]]; then
 	echo "error: no tag found matching Ubuntu-${VERSION}*" >&2
 	echo "Nearby tags:" >&2
 	MAJOR_MINOR="$(echo "$VERSION" | cut -d. -f1-2)"
-	git ls-remote --tags "$REPO" "Ubuntu-${MAJOR_MINOR}*" | awk '{print $2}' | sed 's#refs/tags/##' | sort -V >&2
+	git ls-remote --tags "$REPO" "Ubuntu-${MAJOR_MINOR}*" | awk '{print $2}' | sed -e 's#refs/tags/##' -e 's/\^{}$//' | sort -uV >&2
 	exit 1
 fi
 
