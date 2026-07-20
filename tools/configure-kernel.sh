@@ -50,13 +50,31 @@ echo "[3/5] Merging $EBPF_CONFIG ..."
 ( cd "$KERNEL_DIR" && ./scripts/kconfig/merge_config.sh -m .config "$EBPF_CONFIG" )
 
 echo "[4/5] Disabling module signing (unsigned modules are fine for a dev VM) ..."
-( cd "$KERNEL_DIR" && ./scripts/config --disable MODULE_SIG )
+# SECURITY_LOCKDOWN_LSM does "select MODULE_SIG if MODULES", so disabling
+# MODULE_SIG alone gets silently reverted by olddefconfig below. Disable the
+# selector too, and clear the Canonical key paths that would otherwise make the
+# build demand a signing cert we don't have.
+( cd "$KERNEL_DIR" && ./scripts/config \
+	--disable SECURITY_LOCKDOWN_LSM \
+	--disable SECURITY_LOCKDOWN_LSM_EARLY \
+	--disable MODULE_SIG \
+	--disable MODULE_SIG_ALL \
+	--disable MODULE_SIG_FORCE \
+	--set-str SYSTEM_TRUSTED_KEYS "" \
+	--set-str SYSTEM_REVOCATION_KEYS "" )
 
 echo "[5/5] Resolving dependent options with make olddefconfig ..."
 ( cd "$KERNEL_DIR" && make olddefconfig )
 
+# Re-check after olddefconfig: a leftover "select MODULE_SIG" (e.g. lockdown
+# LSM sneaking back in) would flip signing on again here, not at the config step.
 if grep -q '^CONFIG_MODULE_SIG=y' "$KERNEL_DIR/.config"; then
-	echo "error: CONFIG_MODULE_SIG is still enabled in $KERNEL_DIR/.config after disabling it" >&2
+	echo "error: CONFIG_MODULE_SIG is still enabled in $KERNEL_DIR/.config after olddefconfig" >&2
+	echo "       something still selects it — check: grep -rn 'select MODULE_SIG' $KERNEL_DIR --include=Kconfig" >&2
+	exit 1
+fi
+if grep -q '^CONFIG_SECURITY_LOCKDOWN_LSM=y' "$KERNEL_DIR/.config"; then
+	echo "error: CONFIG_SECURITY_LOCKDOWN_LSM is still enabled — it will re-select MODULE_SIG" >&2
 	exit 1
 fi
 
