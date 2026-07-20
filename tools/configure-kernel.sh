@@ -3,7 +3,8 @@
 # from the running kernel's shipped config and layering ebpf.config on top:
 #   1. Copy /boot/config-$(uname -r) into the kernel source as .config
 #   2. Merge in ebpf.config via merge_config.sh -m (no auto-make/report)
-#   3. Resolve new/dependent options with make olddefconfig
+#   3. Disable module signing (unsigned modules are fine for a dev VM)
+#   4. Resolve new/dependent options with make olddefconfig
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,10 +36,13 @@ KERNEL_DIR="${1:-./ubuntu-$(lsb_release -cs)}"
 echo "[1/3] Copying /boot/config-$(uname -r) into $KERNEL_DIR/.config ..."
 cp "/boot/config-$(uname -r)" "$KERNEL_DIR/.config"
 
-echo "[2/3] Merging $EBPF_CONFIG ..."
+echo "[2/4] Merging $EBPF_CONFIG ..."
 ( cd "$KERNEL_DIR" && ./scripts/kconfig/merge_config.sh -m .config "$EBPF_CONFIG" )
 
-echo "[3/3] Resolving dependent options with make olddefconfig ..."
+echo "[3/4] Disabling module signing (unsigned modules are fine for a dev VM) ..."
+( cd "$KERNEL_DIR" && ./scripts/config --disable MODULE_SIG )
+
+echo "[4/4] Resolving dependent options with make olddefconfig ..."
 ( cd "$KERNEL_DIR" && make olddefconfig )
 
 echo
