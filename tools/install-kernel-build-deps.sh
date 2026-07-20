@@ -9,6 +9,7 @@ PACKAGES=(
 	bc
 	bison
 	flex
+	gawk          # some kernel build steps invoke gawk specifically
 	rsync
 	kmod
 	cpio
