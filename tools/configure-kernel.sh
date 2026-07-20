@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Prepares .config in a cloned kernel source tree for building, starting
 # from the running kernel's shipped config and layering ebpf.config on top:
-#   1. Copy /boot/config-$(uname -r) into the kernel source as .config
-#   2. Merge in ebpf.config via merge_config.sh -m (no auto-make/report)
-#   3. Disable module signing (unsigned modules are fine for a dev VM)
-#   4. Resolve new/dependent options with make olddefconfig
+#   1. Back up any existing .config in the kernel source dir
+#   2. Copy /boot/config-$(uname -r) into the kernel source as .config
+#   3. Merge in ebpf.config via merge_config.sh -m (no auto-make/report)
+#   4. Disable module signing (unsigned modules are fine for a dev VM)
+#   5. Resolve new/dependent options with make olddefconfig, then verify
+#      MODULE_SIG actually ended up disabled
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -33,17 +35,30 @@ KERNEL_DIR="${1:-./ubuntu-$(lsb_release -cs)}"
 [[ -r "$EBPF_CONFIG" ]] || { echo "error: ebpf.config not found at $EBPF_CONFIG" >&2; exit 1; }
 [[ -r "/boot/config-$(uname -r)" ]] || { echo "error: /boot/config-$(uname -r) not found" >&2; exit 1; }
 
-echo "[1/3] Copying /boot/config-$(uname -r) into $KERNEL_DIR/.config ..."
+if [[ -e "$KERNEL_DIR/.config" ]]; then
+	BACKUP="$KERNEL_DIR/.config.bak.$$"
+	echo "[1/5] Existing .config found, backing up to $BACKUP ..."
+	cp "$KERNEL_DIR/.config" "$BACKUP"
+else
+	echo "[1/5] No existing .config in $KERNEL_DIR."
+fi
+
+echo "[2/5] Copying /boot/config-$(uname -r) into $KERNEL_DIR/.config ..."
 cp "/boot/config-$(uname -r)" "$KERNEL_DIR/.config"
 
-echo "[2/4] Merging $EBPF_CONFIG ..."
+echo "[3/5] Merging $EBPF_CONFIG ..."
 ( cd "$KERNEL_DIR" && ./scripts/kconfig/merge_config.sh -m .config "$EBPF_CONFIG" )
 
-echo "[3/4] Disabling module signing (unsigned modules are fine for a dev VM) ..."
+echo "[4/5] Disabling module signing (unsigned modules are fine for a dev VM) ..."
 ( cd "$KERNEL_DIR" && ./scripts/config --disable MODULE_SIG )
 
-echo "[4/4] Resolving dependent options with make olddefconfig ..."
+echo "[5/5] Resolving dependent options with make olddefconfig ..."
 ( cd "$KERNEL_DIR" && make olddefconfig )
 
+if grep -q '^CONFIG_MODULE_SIG=y' "$KERNEL_DIR/.config"; then
+	echo "error: CONFIG_MODULE_SIG is still enabled in $KERNEL_DIR/.config after disabling it" >&2
+	exit 1
+fi
+
 echo
-echo "Done. .config is ready in $KERNEL_DIR."
+echo "Done. .config is ready in $KERNEL_DIR (module signing disabled)."
